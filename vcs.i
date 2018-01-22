@@ -12,7 +12,8 @@
 ; $1000 - $1FFF     ROM
 .MEMORYMAP
     DEFAULTSLOT 0
-    SLOT 0 START $1000  SIZE $1000
+    SLOT 0 START $1000  SIZE $1000  ; ROM
+    SLOT 1 START $0080  SIZE $0080  ; RAM
 .ENDME
 
 ; The ROM BANKs.  We'll provide just one for a total of 4K ROM.

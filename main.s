@@ -10,6 +10,14 @@ ResetLoop:  dex
             txs
             pha
             bne ResetLoop
+
+; initialize registers and RAM
+            lda #$aa 
+            sta ScratchPF
+
+            lda #$1E        ; yellow
+            sta COLUPF
+
 ; ----------------------------------------------------------------------
 StartOfFrame:
 ; Vertical sync signal (3 scanlines)
@@ -48,9 +56,25 @@ VertBlank:  sta WSYNC
             ldx #0
 Picture:    stx COLUBK
             sta WSYNC
+
+            ;draw checkerboard background
+            lda ScratchPF
+            sta PF1
+            eor #$ff        ; for flipped registers
+            sta PF0         ; only high 4 bits used for PF0
+            sta PF2
+            ; writeback toggled value into ScratchPF so lines will alternate
+            sta ScratchPF
+
             inx
             cpx #192
             bne Picture
+
+; End of picture
+; -------------
+            ; Enter vertical blank
+            lda #%01000010
+            sta VBLANK
 
 ; Overscan (30 scanlines)
 ; -----------------------
@@ -61,6 +85,13 @@ Overscan:   sta WSYNC
             bne Overscan
 
             jmp StartOfFrame
+
+
+; ----------------------------------------------------------------------
+; RAM
+.RAMSECTION "foo" SLOT 1
+ScratchPF DB
+.ENDS
 
 ; ----------------------------------------------------------------------
 ; Interrupt vectors
