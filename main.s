@@ -15,7 +15,7 @@ ResetLoop:  dex
             lda #$aa 
             sta ScratchPF
 
-            lda #$1E        ; yellow
+            lda #$1E        ; pieces are yellow
             sta COLUPF
 
 ; ----------------------------------------------------------------------
@@ -54,18 +54,30 @@ VertBlank:  sta WSYNC
 ; Picture (192 scanlines)
 ; -----------------------
             ldx #0
-Picture:    stx COLUBK
-            sta WSYNC
+Picture:    sta WSYNC
 
-            ;draw checkerboard background
+            ;we are now in the overscan for line x
+            ;draw stuff.
+            txa
+            and #$7         ; edge triggered every 8 lines
+            beq doSet
+            jmp doClear
+    doSet:
             lda ScratchPF
             sta PF1
-            eor #$ff        ; for flipped registers
-            sta PF0         ; only high 4 bits used for PF0
-            sta PF2
-            ; writeback toggled value into ScratchPF so lines will alternate
-            sta ScratchPF
 
+            ; asymmetrical playfield test
+            and #$0     ; clear A
+            .REPEAT 20 ; hack
+                nop
+            .ENDR
+            sta PF1
+
+            jmp doDone
+    doClear:
+            and #$0     ; clear A
+            sta PF1
+    doDone:
             inx
             cpx #192
             bne Picture
@@ -85,7 +97,6 @@ Overscan:   sta WSYNC
             bne Overscan
 
             jmp StartOfFrame
-
 
 ; ----------------------------------------------------------------------
 ; RAM
