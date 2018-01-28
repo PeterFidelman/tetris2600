@@ -209,6 +209,24 @@ Overscan:   sta WSYNC
 
             jmp StartOfFrame
 
+; ----------------------------------------------------------------------
+; Subroutines
+MoveLeft:
+            asl PiecePF1.b, x
+            lsr PiecePF2.b, x
+            bcc MLSkip
+            inc PiecePF1, x     ; set low bit (bit shifted out of PF2 into PF1)
+    MLSkip: rts
+
+MoveRight:
+            asl PiecePF2.b, x
+            lsr PiecePF1.b, x
+            bcc MRSkip
+            inc PiecePF2, x     ; set low bit (bit shifted out of PF1 into PF2)
+    MRSkip: rts
+
+
+; ----------------------------------------------------------------------
 ; ROM data
 
 ; Piece rotation tables.
@@ -400,21 +418,6 @@ PieceTable:
     .DB %1100
     .DB %1000
     .DB %0000
-
-; Subroutines
-MoveLeft:
-            asl PiecePF1.b, x
-            lsr PiecePF2.b, x
-            bcc MLSkip
-            inc PiecePF1, x     ; set low bit (bit shifted out of PF2 into PF1)
-    MLSkip: rts
-
-MoveRight:
-            asl PiecePF2.b, x
-            lsr PiecePF1.b, x
-            bcc MRSkip
-            inc PiecePF2, x     ; set low bit (bit shifted out of PF1 into PF2)
-    MRSkip: rts
 
 ; ----------------------------------------------------------------------
 ; RAM
