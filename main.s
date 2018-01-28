@@ -39,6 +39,92 @@ ResetLoop:  dex
             lda #$70
             sta COLUBK
 
+            ; --------------------
+            ; test drawing a piece
+            ; --------------------
+
+            ; initialize ram to pretend someone asked for a particular piece
+            lda #$00
+            sta PieceX
+
+            lda #5
+            sta PieceY
+
+            lda #0
+            sta PieceR
+
+            lda #5
+            sta PieceS
+
+            ; load piece
+            ; ----------
+            ldx #0
+            lda PieceS
+            asl     ; ...*2
+            asl     ; ...*4
+            adc PieceR
+            asl     ; ...*8
+            asl     ; ...*16
+            tay     ; y = (PieceS*16) + (PieceR*4)
+    LPNext:
+            lda PieceTable.w, y
+            sta PiecePF1, x
+            iny
+            inx
+            cpx #4
+            bne LPNext
+
+            ; shift piece
+            ; -----------
+            lda PieceX
+            cmp #0      ; PieceX - 0
+            beq SDone
+            bmi SLeft
+    SRight:             ; PieceX > 0
+            ldx #0
+            jsr MoveRight
+            inx
+            jsr MoveRight
+            inx
+            jsr MoveRight
+            inx
+            jsr MoveRight
+            adc #$ff
+            bne SRight
+            jmp SDone
+    SLeft:              ; PieceX < 0
+            ldx #0
+            jsr MoveLeft
+            inx
+            jsr MoveLeft
+            inx
+            jsr MoveLeft
+            inx
+            jsr MoveLeft
+            adc #1
+            bne SLeft
+    SDone:
+
+            ; commit piece
+            ; ------------
+            ldx #0
+            lda PieceY
+            asl 
+            tay     ; y = PieceY * 2
+
+    CPNext:
+            lda PiecePF1,x
+            ora GameBoard,y
+            sta GameBoard,y
+            iny
+            lda PiecePF2,x
+            ora GameBoard,y
+            sta GameBoard,y
+            iny
+            inx
+            cpx #4
+            bne CPNext
+
 ; ----------------------------------------------------------------------
 StartOfFrame:
 ; Vertical sync signal (3 scanlines)
@@ -123,11 +209,223 @@ Overscan:   sta WSYNC
 
             jmp StartOfFrame
 
+; ROM data
+
+; Piece rotation tables.
+; There are 7 piece shapes, and 4 piece rotations:
+;  Shapes:
+;    I = 0
+;    O = 1
+;    T = 2
+;    L = 3
+;    J = 4
+;    S = 5
+;    Z = 6
+; 
+;  Rotations:
+;    A = 0
+;    B = 1
+;    C = 2
+;    D = 3
+;
+; The memory layout of the tables will be as follows:
+;
+;    Shape0 Rotation0
+;       ; db (top row)
+;       ; db
+;       ; db
+;       ; db (bottom row)
+;    Shape0 Rotation1
+;       ; db db db db
+;    Shape0 Rotation2
+;       ; ...
+;    Shape0 Rotation3
+;       ; ...
+;
+;    Shape1 Rotation0
+;    Shape1 Rotation1
+;    Shape1 Rotation2
+;    Shape1 Rotation3
+;
+;    ...
+;
+; Each row of the table is the initial value of PF1 for a line of that piece.
+; With this value of PF1, the piece will come into the playfield centered.
+; As the player moves the piece left & right (later) this x-movement will
+; shift/ping-pong the bits between PF1 and PF2 to translate the piece left &
+; right.
+;
+; Translating the piece up and down is simply done by changing the intial line
+; at which it is OR'd into the GameBoard.
+;
+; PieceTable will consume (7 * 4 * 4) = 112 bytes ROM.
+
+PieceTable:
+    .DB %0000
+    .DB %0000
+    .DB %1111
+    .DB %0000
+
+    .DB %0100
+    .DB %0100
+    .DB %0100
+    .DB %0100
+
+    .DB %0000
+    .DB %0000
+    .DB %1111
+    .DB %0000
+
+    .DB %0100
+    .DB %0100
+    .DB %0100
+    .DB %0100
+
+    .DB %0000
+    .DB %0110
+    .DB %0110
+    .DB %0000
+
+    .DB %0000
+    .DB %0110
+    .DB %0110
+    .DB %0000
+
+    .DB %0000
+    .DB %0110
+    .DB %0110
+    .DB %0000
+
+    .DB %0000
+    .DB %0110
+    .DB %0110
+    .DB %0000
+
+    .DB %1110
+    .DB %0100
+    .DB %0000
+    .DB %0000
+
+    .DB %0100
+    .DB %1100
+    .DB %0100
+    .DB %0000
+
+    .DB %0100
+    .DB %1110
+    .DB %0000
+    .DB %0000
+
+    .DB %0100
+    .DB %0110
+    .DB %0100
+    .DB %0000
+
+    .DB %0000
+    .DB %1110
+    .DB %1000
+    .DB %0000
+
+    .DB %1100
+    .DB %0100
+    .DB %0100
+    .DB %0000
+
+    .DB %0010
+    .DB %1110
+    .DB %0000
+    .DB %0000
+
+    .DB %0100
+    .DB %0100
+    .DB %0110
+    .DB %0000
+
+    .DB %0000
+    .DB %1110
+    .DB %0010
+    .DB %0000
+
+    .DB %0100
+    .DB %0100
+    .DB %1100
+    .DB %0000
+
+    .DB %1000
+    .DB %1110
+    .DB %0000
+    .DB %0000
+
+    .DB %0110
+    .DB %0100
+    .DB %0100
+    .DB %0000
+
+    .DB %0110
+    .DB %1100
+    .DB %0000
+    .DB %0000
+
+    .DB %1000
+    .DB %1100
+    .DB %0100
+    .DB %0000
+
+    .DB %0110
+    .DB %1100
+    .DB %0000
+    .DB %0000
+
+    .DB %1000
+    .DB %1100
+    .DB %0100
+    .DB %0000
+
+    .DB %1100
+    .DB %0110
+    .DB %0000
+    .DB %0000
+
+    .DB %0100
+    .DB %1100
+    .DB %1000
+    .DB %0000
+
+    .DB %1100
+    .DB %0110
+    .DB %0000
+    .DB %0000
+
+    .DB %0100
+    .DB %1100
+    .DB %1000
+    .DB %0000
+
+; Subroutines
+MoveLeft:
+            asl PiecePF1.b, x
+            lsr PiecePF2.b, x
+            bcc MLSkip
+            inc PiecePF1, x     ; set low bit (bit shifted out of PF2 into PF1)
+    MLSkip: rts
+
+MoveRight:
+            asl PiecePF2.b, x
+            lsr PiecePF1.b, x
+            bcc MRSkip
+            inc PiecePF2, x     ; set low bit (bit shifted out of PF1 into PF2)
+    MRSkip: rts
+
 ; ----------------------------------------------------------------------
 ; RAM
 .RAMSECTION "foo" SLOT 1
     GameBoard DS 44     ; 128 - 44 == 84 bytes of RAM remaining
-    Row DB              ;  84 -  1 == 83
+    PieceX DB           ;  84 -  1 == 83    ; x-position of current piece
+    PieceY DB           ;  83 -  1 == 82    ; y-position...
+    PieceR DB           ;  82 -  1 == 81    ; rotation...
+    PieceS DB           ;  81 -  1 == 80    ; shape ID...
+    PiecePF1 DS 4       ;  80 -  4 == 76    ; PF1 bits...
+    PiecePF2 DS 4       ;  76 -  4 == 72    ; PF2 bits...
 .ENDS
 
 ; ----------------------------------------------------------------------
