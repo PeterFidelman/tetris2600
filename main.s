@@ -182,6 +182,7 @@ PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
             lda PieceS
             asl     ; ...*2
             asl     ; ...*4
+            clc
             adc PieceR
             asl     ; ...*8
             asl     ; ...*16
@@ -190,6 +191,8 @@ PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
     PLNext:
             lda PieceTable.w, y
             sta PiecePF1, x
+            lda #0
+            sta PiecePF2, x
             iny
             inx
             cpx #4
@@ -202,11 +205,13 @@ PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
             bmi PLLeft
     PLRight:            ; PieceX > 0
             jsr PieceRight
+            clc
             adc #$ff
             bne PLRight
             jmp PLDone
     PLLeft:             ; PieceX < 0
             jsr PieceLeft
+            clc
             adc #1
             bne PLLeft
     PLDone: rts
@@ -273,7 +278,7 @@ PieceCollides:  ; Check if piece would collide;  AND;  piece must be "out".
     PCDone:
             rts
 
-PieceLeft:  ; updates PiecePF1, 2, and PieceX
+PieceLeft:  ; updates PiecePF1, 2
             ldx #0
             jsr MoveLeft
             inx
@@ -282,9 +287,8 @@ PieceLeft:  ; updates PiecePF1, 2, and PieceX
             jsr MoveLeft
             inx
             jsr MoveLeft
-            dec PieceX
             rts
-PieceRight:  ; updates PiecePF1, 2, and PieceX
+PieceRight:  ; updates PiecePF1, 2
             ldx #0
             jsr MoveRight
             inx
@@ -293,7 +297,6 @@ PieceRight:  ; updates PiecePF1, 2, and PieceX
             jsr MoveRight
             inx
             jsr MoveRight
-            inc PieceX
             rts
 
 IsLineFilled:   ; TODO
@@ -301,9 +304,6 @@ MoveLine:       ; TODO
 ClearFilledLines:   ; TODO
 
 JoypadPoll: ; TODO
-            lda #$70
-            sta COLUBK
-
             lda #%10000000
             bit INPT4
             beq J1Fire
@@ -318,26 +318,82 @@ JoypadPoll: ; TODO
             lsr
             bit SWCHA
             beq J1Up
+            lda #0          ; nothing pressed
+            sta LastJoy
             jmp J1Done
     J1Fire:
-            lda #$0E
-            sta COLUBK
+            lda #1          ; fire
+            cmp LastJoy
+            beq J1Done      ; already pressed
+            sta LastJoy     ; newly pressed
+            ; fire button action
+            lda PieceR
+            clc
+            adc #1
+            and #3
+            sta PieceR
+            jsr PieceLoad
+            jsr PieceCollides
+            beq J1Fok
+            lda PieceR
+            clc
+            adc #$ff
+            and #3
+            sta PieceR
+            jsr PieceLoad
+      J1Fok:
             jmp J1Done
     J1Right:
-            lda #$3A
-            sta COLUBK
+            lda #2          ; right
+            cmp LastJoy
+            beq J1Done      ; already pressed
+            sta LastJoy     ; newly pressed
+            ; right action
+            jsr PieceRight
+            inc PieceX
+            jsr PieceCollides
+            beq J1Rok
+            jsr PieceLeft
+            dec PieceX
+      J1Rok:
             jmp J1Done
     J1Left:
-            lda #$7A
-            sta COLUBK
+            lda #3          ; left
+            cmp LastJoy
+            beq J1Done      ; already pressed
+            sta LastJoy     ; newly pressed
+            ; left action
+            jsr PieceLeft
+            dec PieceX
+            jsr PieceCollides
+            beq J1Lok
+            jsr PieceRight
+            inc PieceX
+      J1Lok:
             jmp J1Done
     J1Down:
-            lda #$BA
-            sta COLUBK
+            lda #4          ; down
+            cmp LastJoy
+            beq J1Done      ; already pressed
+            sta LastJoy     ; newly pressed
+            ; down action
+            inc PieceY
+            jsr PieceCollides
+            beq J1Dok
+            dec PieceY
+      J1Dok:
             jmp J1Done
     J1Up:
-            lda #$1A
-            sta COLUBK
+            lda #4          ; up
+            cmp LastJoy
+            beq J1Done      ; already pressed
+            sta LastJoy     ; newly pressed
+            ; up action
+            ; TODO
+            ; this is a hack
+            jsr PieceIn
+            jsr PieceNew
+            jsr PieceLoad
     J1Done: rts
 ; ----------------------------------------------------------------------
 ; ROM data
@@ -542,6 +598,7 @@ PieceTable:
     PieceS DB           ;  81 -  1 == 80    ; shape ID...
     PiecePF1 DS 4       ;  80 -  4 == 76    ; PF1 bits...
     PiecePF2 DS 4       ;  76 -  4 == 72    ; PF2 bits...
+    LastJoy DB          ;  72 -  1 == 71    ; Last joypad direction
 .ENDS
 
 ; ----------------------------------------------------------------------
