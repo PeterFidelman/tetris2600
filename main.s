@@ -227,12 +227,50 @@ PieceIn:    ; Mask the piece into the playfield;  ORA + STA
             bne PINext
             rts
 
-PieceOut:   ; Mask the piece out of the playfield;  EOR %$FF + AND + STA
-            ; TODO
+PieceOut:   ; Mask the piece out of the playfield;  EOR #$FF + AND + STA
+            lda PieceY
+            asl 
+            tay     ; y = PieceY * 2
+            ldx #0
+    PONext:
+            lda PiecePF1,x
+            eor #$ff
+            and GameBoard,y
+            sta GameBoard,y
+            iny
+            lda PiecePF2,x
+            eor #$ff
+            and GameBoard,y
+            sta GameBoard,y
+            iny
+            inx
+            cpx #4
+            bne PONext
+            rts
 
 PieceCollides:  ; Check if piece would collide;  AND;  piece must be "out".
-            ; TODO
-PieceLeft:
+            ; Result in zeroflag;  zero == no collision;  nonzero == collision
+            lda PieceY
+            asl 
+            tay     ; y = PieceY * 2
+            ldx #0
+    PCNext:
+            lda PiecePF1,x
+            and GameBoard,y
+            bne PCDone  ; collision;  bailout, leaving the flag "nonzero"
+            iny
+            lda PiecePF2,x
+            and GameBoard,y
+            bne PCDone  ; collision;  bailout, leaving the flag "nonzero"
+            iny
+            inx
+            cpx #4
+            bne PCNext
+            ; no collision, and if we got here, the flag is "zero" :-)
+    PCDone:
+            rts
+
+PieceLeft:  ; updates PiecePF1, 2, and PieceX
             ldx #0
             jsr MoveLeft
             inx
@@ -241,8 +279,9 @@ PieceLeft:
             jsr MoveLeft
             inx
             jsr MoveLeft
+            dec PieceX
             rts
-PieceRight:
+PieceRight:  ; updates PiecePF1, 2, and PieceX
             ldx #0
             jsr MoveRight
             inx
@@ -251,9 +290,8 @@ PieceRight:
             jsr MoveRight
             inx
             jsr MoveRight
+            inc PieceX
             rts
-PieceDrop:
-            ; TODO
 
 ; ----------------------------------------------------------------------
 ; ROM data
