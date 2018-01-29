@@ -13,7 +13,7 @@ ResetLoop:  dex
 
 ; initialize registers and RAM
 
-            ; game board top and bottom caps
+            ; GameBoard top and bottom caps
             lda #%11111111
             sta GameBoard           ; top
             sta GameBoard+(2*21)    ; bottom
@@ -21,7 +21,7 @@ ResetLoop:  dex
             sta GameBoard+1         ; top
             sta GameBoard+(2*21)+1  ; bottom
 
-            ; game board middle area
+            ; GameBoard middle area
             ldx #2
             lda #%10000000
             ldy #%00001000
@@ -148,11 +148,18 @@ StartOfFrame:
             lda #%01000010
             sta VBLANK
 
-            ldx #0
-VertBlank:  sta WSYNC
-            inx
-            cpx #37
+            ; Set timer to count down until the end of the vertical blank
+            lda #43
+            sta TIM64T  ; (43*64) cpu cycles / 76 cycles/line = 36.2 scanlines
+
+            ; Free-time for calculations here :-)
+
+            ; Poll the timer until the scheduled end of the vertical blank
+VertBlank:
+            lda INTIM
+            cmp #0
             bne VertBlank
+            sta WSYNC  ; burn the last (37th) line
 
             ; Stop vertical blank
             lda #%01000000
@@ -163,7 +170,7 @@ VertBlank:  sta WSYNC
             ldx #0          ; current scanline
             ldy #0          ; current index into GameBoard
 Picture:    sta WSYNC
-            ;we are now in the overscan for line x
+            ; we are now in the horizontal blank for line x
 
             ; draw the game board on the left side of the playfield
             lda GameBoard,y
@@ -190,8 +197,16 @@ advance:
             iny
             iny
 skip:
-            cpx #192        ; if we're not done drawing scanlines this frame
+            cpx #176        ; if we're not done drawing scanlines this frame
             bne Picture     ; ... draw the next scanline
+
+; Scanlines 176 - 192 (16 scanlines, "lines 22, 23 of the board") need not be
+; drawn (because the board only comprises line 0-21).  So this part of the
+; screen is free processing time for us.
+NoPicture:  sta WSYNC
+            inx
+            cpx #192
+            bne NoPicture
 
 ; End of picture
 ; -------------
@@ -201,11 +216,17 @@ skip:
 
 ; Overscan (30 scanlines)
 ; -----------------------
-            ldx #0
-Overscan:   sta WSYNC
-            inx
-            cpx #30
+            ; Set timer to count down until the end of the overscan
+            lda #35
+            sta TIM64T  ; (35*64) cpu cycles / 76 cycles/line = 29.4 scanlines
+
+            ; Free-time for calculations here :-)
+
+            ; Poll the timer until the scheduled end of overscan.
+Overscan:   lda INTIM
+            cmp #0
             bne Overscan
+            sta WSYNC  ; burn the last (30th) line
 
             jmp StartOfFrame
 
@@ -268,7 +289,7 @@ MoveRight:
 ;    ...
 ;
 ; Each row of the table is the initial value of PF1 for a line of that piece.
-; With this value of PF1, the piece will come into the playfield centered.
+; With this value of PF1, the piece will come into the playfield centered(ish).
 ; As the player moves the piece left & right (later) this x-movement will
 ; shift/ping-pong the bits between PF1 and PF2 to translate the piece left &
 ; right.
