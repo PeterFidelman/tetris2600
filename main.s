@@ -32,18 +32,18 @@ ResetLoop:  dex
             cpx #(2*21)
             bne InitMiddle
 
+            ; configure PortA as input for two joysticks
+            lda #$00
+            sta SWACNT
+
             ; colors
             lda #$0E
             sta COLUPF
             lda #$70
             sta COLUBK
 
-            ; --------------------
-            ; test drawing a piece
-            ; --------------------
             jsr PieceNew
             jsr PieceLoad
-            jsr PieceIn
 
 ; ----------------------------------------------------------------------
 StartOfFrame:
@@ -65,7 +65,7 @@ StartOfFrame:
 ; Vertical blank (37 scanlines)
 ; -----------------------------
             ; Start vertical blank
-            lda #%01000010
+            lda #%00000010
             sta VBLANK
 
             ; Set timer to count down until the end of the vertical blank
@@ -73,6 +73,8 @@ StartOfFrame:
             sta TIM64T  ; (43*64) cpu cycles / 76 cycles/line = 36.2 scanlines
 
             ; Free-time for calculations here :-)
+            jsr JoypadPoll
+            jsr PieceIn
 
             ; Poll the timer until the scheduled end of the vertical blank
 VertBlank:
@@ -82,7 +84,7 @@ VertBlank:
             sta WSYNC  ; burn the last (37th) line
 
             ; Stop vertical blank
-            lda #%01000000
+            lda #%00000000
             sta VBLANK
 
 ; Picture (192 scanlines)
@@ -131,7 +133,7 @@ NoPicture:  sta WSYNC
 ; End of picture
 ; -------------
             ; Enter vertical blank
-            lda #%01000010
+            lda #%00000010
             sta VBLANK
 
 ; Overscan (30 scanlines)
@@ -141,6 +143,7 @@ NoPicture:  sta WSYNC
             sta TIM64T  ; (35*64) cpu cycles / 76 cycles/line = 29.4 scanlines
 
             ; Free-time for calculations here :-)
+            jsr PieceOut
 
             ; Poll the timer until the scheduled end of overscan.
 Overscan:   lda INTIM
@@ -293,6 +296,49 @@ PieceRight:  ; updates PiecePF1, 2, and PieceX
             inc PieceX
             rts
 
+IsLineFilled:   ; TODO
+MoveLine:       ; TODO
+ClearFilledLines:   ; TODO
+
+JoypadPoll: ; TODO
+            lda #$70
+            sta COLUBK
+
+            lda #%10000000
+            bit INPT4
+            beq J1Fire
+            bit SWCHA
+            beq J1Right
+            lsr
+            bit SWCHA
+            beq J1Left
+            lsr
+            bit SWCHA
+            beq J1Down
+            lsr
+            bit SWCHA
+            beq J1Up
+            jmp J1Done
+    J1Fire:
+            lda #$0E
+            sta COLUBK
+            jmp J1Done
+    J1Right:
+            lda #$3A
+            sta COLUBK
+            jmp J1Done
+    J1Left:
+            lda #$7A
+            sta COLUBK
+            jmp J1Done
+    J1Down:
+            lda #$BA
+            sta COLUBK
+            jmp J1Done
+    J1Up:
+            lda #$1A
+            sta COLUBK
+    J1Done: rts
 ; ----------------------------------------------------------------------
 ; ROM data
 
