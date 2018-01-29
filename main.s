@@ -12,7 +12,6 @@ ResetLoop:  dex
             bne ResetLoop
 
 ; initialize registers and RAM
-
             ; GameBoard top and bottom caps
             lda #%11111111
             sta GameBoard           ; top
@@ -42,88 +41,9 @@ ResetLoop:  dex
             ; --------------------
             ; test drawing a piece
             ; --------------------
-
-            ; initialize ram to pretend someone asked for a particular piece
-            lda #$00
-            sta PieceX
-
-            lda #5
-            sta PieceY
-
-            lda #0
-            sta PieceR
-
-            lda #5
-            sta PieceS
-
-            ; load piece
-            ; ----------
-            ldx #0
-            lda PieceS
-            asl     ; ...*2
-            asl     ; ...*4
-            adc PieceR
-            asl     ; ...*8
-            asl     ; ...*16
-            tay     ; y = (PieceS*16) + (PieceR*4)
-    LPNext:
-            lda PieceTable.w, y
-            sta PiecePF1, x
-            iny
-            inx
-            cpx #4
-            bne LPNext
-
-            ; shift piece
-            ; -----------
-            lda PieceX
-            cmp #0      ; PieceX - 0
-            beq SDone
-            bmi SLeft
-    SRight:             ; PieceX > 0
-            ldx #0
-            jsr MoveRight
-            inx
-            jsr MoveRight
-            inx
-            jsr MoveRight
-            inx
-            jsr MoveRight
-            adc #$ff
-            bne SRight
-            jmp SDone
-    SLeft:              ; PieceX < 0
-            ldx #0
-            jsr MoveLeft
-            inx
-            jsr MoveLeft
-            inx
-            jsr MoveLeft
-            inx
-            jsr MoveLeft
-            adc #1
-            bne SLeft
-    SDone:
-
-            ; commit piece
-            ; ------------
-            ldx #0
-            lda PieceY
-            asl 
-            tay     ; y = PieceY * 2
-
-    CPNext:
-            lda PiecePF1,x
-            ora GameBoard,y
-            sta GameBoard,y
-            iny
-            lda PiecePF2,x
-            ora GameBoard,y
-            sta GameBoard,y
-            iny
-            inx
-            cpx #4
-            bne CPNext
+            jsr PieceNew
+            jsr PieceLoad
+            jsr PieceIn
 
 ; ----------------------------------------------------------------------
 StartOfFrame:
@@ -232,20 +152,108 @@ Overscan:   lda INTIM
 
 ; ----------------------------------------------------------------------
 ; Subroutines
-MoveLeft:
+MoveLeft:   ; Move a single line of the piece to the left
             asl PiecePF1.b, x
             lsr PiecePF2.b, x
             bcc MLSkip
             inc PiecePF1, x     ; set low bit (bit shifted out of PF2 into PF1)
     MLSkip: rts
 
-MoveRight:
+MoveRight:  ; Move a single line of the piece to the right
             asl PiecePF2.b, x
             lsr PiecePF1.b, x
             bcc MRSkip
             inc PiecePF2, x     ; set low bit (bit shifted out of PF1 into PF2)
     MRSkip: rts
 
+PieceNew:   ; TODO make this random
+            ldx #0
+            stx PieceR
+            stx PieceS
+            stx PieceX
+            inx
+            stx PieceY
+            rts
+
+PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
+            lda PieceS
+            asl     ; ...*2
+            asl     ; ...*4
+            adc PieceR
+            asl     ; ...*8
+            asl     ; ...*16
+            tay     ; y = (PieceS*16) + (PieceR*4)
+            ldx #0
+    PLNext:
+            lda PieceTable.w, y
+            sta PiecePF1, x
+            iny
+            inx
+            cpx #4
+            bne PLNext
+
+            ; Now shift the piece left or right according to PieceX
+            lda PieceX
+            cmp #0      ; PieceX - 0
+            beq PLDone
+            bmi PLLeft
+    PLRight:            ; PieceX > 0
+            jsr PieceRight
+            adc #$ff
+            bne PLRight
+            jmp PLDone
+    PLLeft:             ; PieceX < 0
+            jsr PieceLeft
+            adc #1
+            bne PLLeft
+    PLDone: rts
+
+PieceIn:    ; Mask the piece into the playfield;  ORA + STA
+            lda PieceY
+            asl 
+            tay     ; y = PieceY * 2
+            ldx #0
+    PINext:
+            lda PiecePF1,x
+            ora GameBoard,y
+            sta GameBoard,y
+            iny
+            lda PiecePF2,x
+            ora GameBoard,y
+            sta GameBoard,y
+            iny
+            inx
+            cpx #4
+            bne PINext
+            rts
+
+PieceOut:   ; Mask the piece out of the playfield;  EOR %$FF + AND + STA
+            ; TODO
+
+PieceCollides:  ; Check if piece would collide;  AND;  piece must be "out".
+            ; TODO
+PieceLeft:
+            ldx #0
+            jsr MoveLeft
+            inx
+            jsr MoveLeft
+            inx
+            jsr MoveLeft
+            inx
+            jsr MoveLeft
+            rts
+PieceRight:
+            ldx #0
+            jsr MoveRight
+            inx
+            jsr MoveRight
+            inx
+            jsr MoveRight
+            inx
+            jsr MoveRight
+            rts
+PieceDrop:
+            ; TODO
 
 ; ----------------------------------------------------------------------
 ; ROM data
