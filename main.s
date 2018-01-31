@@ -32,6 +32,16 @@ ResetLoop:  dex
             cpx #(2*21)
             bne InitMiddle
 
+            ; TODO hack
+            sta Buffer
+            sta Buffer+2
+            sta Buffer+4
+            sta Buffer+6
+            sty Buffer+1
+            sty Buffer+3
+            sty Buffer+5
+            sty Buffer+7
+
             ; configure PortA as input for two joysticks
             lda #$00
             sta SWACNT
@@ -41,6 +51,9 @@ ResetLoop:  dex
             sta COLUPF
             lda #$70
             sta COLUBK
+
+            lda #0
+            sta Level
 
             jsr PieceNew
             jsr PieceLoad
@@ -73,7 +86,24 @@ StartOfFrame:
             sta TIM64T  ; (43*64) cpu cycles / 76 cycles/line = 36.2 scanlines
 
             ; Free-time for calculations here :-)
+
+            ; Field the user input
             jsr JoypadPoll
+
+            ; Decide whether it is time to tick gravity
+            lda #%00011111
+            ldx Level
+  SOFShift: beq SOFShifted
+            lsr
+            dex
+            jmp SOFShift
+  SOFShifted:
+            and FrameNo
+            bne NoGravYet
+            jsr GravTick    ; Tick gravity
+  NoGravYet:
+
+            ; Draw the piece
             jsr PieceIn
 
             ; Poll the timer until the scheduled end of the vertical blank
@@ -97,13 +127,11 @@ Picture:    sta WSYNC
             ; draw the game board on the left side of the playfield
             lda GameBoard,y
             sta PF1
-            iny
-            lda GameBoard,y
+            lda GameBoard+1,y
             sta PF2
-            dey
 
             ; asymmetrical playfield
-            .REPEAT 10  ; hack - advance to circa color-clock 150
+            .REPEAT 12  ; hack - advance to circa color-clock 150
                 nop
             .ENDR
             and #$0     ; clear A...
@@ -151,6 +179,7 @@ Overscan:   lda INTIM
             bne Overscan
             sta WSYNC  ; burn the last (30th) line
 
+            inc FrameNo
             jmp StartOfFrame
 
 ; ----------------------------------------------------------------------
@@ -169,13 +198,26 @@ MoveRight:  ; Move a single line of the piece to the right
             inc PiecePF2, x     ; set low bit (bit shifted out of PF1 into PF2)
     MRSkip: rts
 
-PieceNew:   ; TODO make this random
+PieceNew:
             ldx #0
             stx PieceR
-            stx PieceS
             stx PieceX
             inx
             stx PieceY
+            ; the worst "random" ever - just take some bytes from the frame
+            ; counter, and if the result is out of range, pick an O-piece.
+            lda FrameNo
+            lsr
+            lsr
+            lsr
+            lsr
+            lsr
+            and #7
+            cmp #7
+            bne PNDone
+            lda #1
+PNDone:
+            sta PieceS
             rts
 
 PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
@@ -207,12 +249,14 @@ PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
             jsr PieceRight
             clc
             adc #$ff
+            clc
             bne PLRight
             jmp PLDone
     PLLeft:             ; PieceX < 0
             jsr PieceLeft
             clc
             adc #1
+            clc
             bne PLLeft
     PLDone: rts
 
@@ -299,9 +343,97 @@ PieceRight:  ; updates PiecePF1, 2
             jsr MoveRight
             rts
 
-IsLineFilled:   ; TODO
-MoveLine:       ; TODO
-ClearFilledLines:   ; TODO
+PieceLock:  ; Locks the piece and checks for horizontal lines.
+            jsr PieceIn
+            jsr ClearFilledLines
+            jsr PieceNew
+            jsr PieceLoad
+
+LineFilled: ; Takes x (First byte of line to check).
+            ; zero (beq) == full;  nonzero (bne) == not full
+            lda GameBoard, x
+            cmp #$ff
+            bne ILFDone
+            lda GameBoard+1, x
+            cmp #$0f
+  ILFDone:  rts
+
+LineSlide:  ; Takes x (First byte of line to slide into (dest))
+            ; and the zeropage variable SlideAmt
+            txa
+            clc
+            sbc SlideAmt
+            clc
+            sbc SlideAmt
+            tay
+            lda GameBoard, y
+            sta GameBoard, x
+            lda GameBoard+1, y
+            sta GameBoard+1, x
+    LSDone: rts
+
+ClearFilledLines:
+            ldx #40
+            lda #0
+            sta SlideAmt
+   CFLTop:
+            lda #0
+            cmp SlideAmt
+            beq CFLNoSl
+            jsr LineSlide
+   CFLNoSl:
+            jsr LineFilled
+            bne CFLNext
+            ; Filled
+            inc SlideAmt
+            jmp CFLLoop
+   CFLNext:
+            dex
+            dex
+   CFLLoop: cpx #0
+            bne CFLTop
+            rts
+;---
+;  CFLTop:   jsr LineFilled
+;            bne CFLNext
+;            inc SlideAmt
+;            jsr LineSlide
+;  CFLNext:
+;            dex
+;            dex
+;            cpx #0
+;            bne CFLTop
+;            rts
+;---
+
+;           ldx #40
+;           lda #0
+;           sta SlideAmt
+;           sta OutOfFiller ; TODO
+;    Appraise:
+;;            jsr LineFilled
+;;           bne DoneLine
+;;           ; Filled
+;;           inc SlideAmt
+;;           jsr LineSlide
+;;           jmp Appraise
+;            lda #0
+;            cmp SlideAmt
+;            beq SkipSlide
+;            jsr LineSlide
+;  SkipSlide:jsr LineFilled
+;            bne SkipInc
+;            inc SlideAmt
+;            jmp Appraise
+;  SkipInc:  ; jmp DoneLine
+;
+;    DoneLine:
+;            ; And move on to the next line
+;            dex
+;            dex
+;            cpx #0
+;            bne Appraise
+;            rts
 
 JoypadPoll: ; TODO
             lda #%10000000
@@ -315,9 +447,9 @@ JoypadPoll: ; TODO
             lsr
             bit SWCHA
             beq J1Down
-            lsr
-            bit SWCHA
-            beq J1Up
+            ;lsr
+            ;bit SWCHA
+            ;beq J1Up
             lda #0          ; nothing pressed
             sta LastJoy
             jmp J1Done
@@ -346,8 +478,14 @@ JoypadPoll: ; TODO
     J1Right:
             lda #2          ; right
             cmp LastJoy
-            beq J1Done      ; already pressed
+            beq J1Rodds
             sta LastJoy     ; newly pressed
+            jmp J1Rtry
+      J1Rodds:
+            lda #1
+            and FrameNo
+            beq J1Done
+      J1Rtry:
             ; right action
             jsr PieceRight
             inc PieceX
@@ -360,8 +498,14 @@ JoypadPoll: ; TODO
     J1Left:
             lda #3          ; left
             cmp LastJoy
-            beq J1Done      ; already pressed
+            beq J1Lodds
             sta LastJoy     ; newly pressed
+            jmp J1LTry
+      J1Lodds:
+            lda #1
+            and FrameNo
+            beq J1Done
+      J1LTry:
             ; left action
             jsr PieceLeft
             dec PieceX
@@ -373,8 +517,8 @@ JoypadPoll: ; TODO
             jmp J1Done
     J1Down:
             lda #4          ; down
-            cmp LastJoy
-            beq J1Done      ; already pressed
+            ;cmp LastJoy
+            ;beq J1Done      ; already pressed
             sta LastJoy     ; newly pressed
             ; down action
             inc PieceY
@@ -384,17 +528,24 @@ JoypadPoll: ; TODO
       J1Dok:
             jmp J1Done
     J1Up:
-            lda #4          ; up
-            cmp LastJoy
-            beq J1Done      ; already pressed
-            sta LastJoy     ; newly pressed
-            ; up action
-            ; TODO
-            ; this is a hack
-            jsr PieceIn
-            jsr PieceNew
-            jsr PieceLoad
+            ;lda #5          ; up
+            ;cmp LastJoy
+            ;beq J1Done      ; already pressed
+            ;sta LastJoy     ; newly pressed
+            ;; up action
+            ;jsr PieceLock
     J1Done: rts
+
+GravTick:
+            ; Can it drop?
+            inc PieceY
+            jsr PieceCollides
+            beq GTDone  ; Yes it can, drop it.
+            dec PieceY  ; No, it can't drop, put it back.
+            ; And "lock piece" (meaning, move on to the next piece)
+            jsr PieceLock
+GTDone:     rts
+
 ; ----------------------------------------------------------------------
 ; ROM data
 
@@ -591,14 +742,19 @@ PieceTable:
 ; ----------------------------------------------------------------------
 ; RAM
 .RAMSECTION "foo" SLOT 1
-    GameBoard DS 44     ; 128 - 44 == 84 bytes of RAM remaining
-    PieceX DB           ;  84 -  1 == 83    ; x-position of current piece
-    PieceY DB           ;  83 -  1 == 82    ; y-position...
-    PieceR DB           ;  82 -  1 == 81    ; rotation...
-    PieceS DB           ;  81 -  1 == 80    ; shape ID...
-    PiecePF1 DS 4       ;  80 -  4 == 76    ; PF1 bits...
-    PiecePF2 DS 4       ;  76 -  4 == 72    ; PF2 bits...
-    LastJoy DB          ;  72 -  1 == 71    ; Last joypad direction
+                        ;  128 bytes RAM total
+    Buffer DS 8 ; TODO  ; -  8 == 120   ; filled with |....... ....|... (lazy shift logic)
+    GameBoard DS 44     ; - 44 == 76    ; the game board
+    PieceX DB           ; -  1 == 75    ; x-position of current piece
+    PieceY DB           ; -  1 == 74    ; y-position...
+    PieceR DB           ; -  1 == 73    ; rotation...
+    PieceS DB           ; -  1 == 72    ; shape ID...
+    PiecePF1 DS 4       ; -  4 == 68    ; PF1 bits...
+    PiecePF2 DS 4       ; -  4 == 64    ; PF2 bits...
+    LastJoy DB          ; -  1 == 63    ; Last joypad direction...
+    Level DB            ; -  1 == 62    ; Game level...
+    FrameNo DB          ; -  1 == 61    ; Frames since start & 0xFF...
+    SlideAmt DB         ; -  1 == 60    ; Num lines cleared this frame...
 .ENDS
 
 ; ----------------------------------------------------------------------
