@@ -1,5 +1,19 @@
 .INCLUDE "vcs.i"
 ; ----------------------------------------------------------------------
+; TIATracker Constants
+.DEFINE TT_GLOBAL_SPEED 1
+.DEFINE TT_SPEED  7
+.DEFINE TT_ODD_SPEED  7
+.DEFINE TT_USE_OVERLAY  1
+.DEFINE TT_USE_SLIDE  0
+.DEFINE TT_USE_GOTO  1
+.DEFINE TT_USE_FUNKTEMPO  0
+.DEFINE TT_STARTS_WITH_NOTES  1
+.DEFINE TT_FREQ_MASK    %00011111
+.DEFINE TT_INS_HOLD     8
+.DEFINE TT_INS_PAUSE    16
+.DEFINE TT_FIRST_PERC   17
+
 ; Start of ROM image
 .ORGA $1000
 ; Clear RAM and all TIA registers
@@ -58,6 +72,12 @@ ResetLoop:  dex
             jsr PieceNew
             jsr PieceLoad
 
+            ; Initialize TIATracker
+            lda #0
+            sta tt_cur_pat_index_c0
+            lda #13
+            sta tt_cur_pat_index_c1
+
 ; ----------------------------------------------------------------------
 StartOfFrame:
 ; Vertical sync signal (3 scanlines)
@@ -86,6 +106,7 @@ StartOfFrame:
             sta TIM64T  ; (43*64) cpu cycles / 76 cycles/line = 36.2 scanlines
 
             ; Free-time for calculations here :-)
+            ; -----------------------------------
 
             ; Field the user input
             jsr JoypadPoll
@@ -171,7 +192,165 @@ NoPicture:  sta WSYNC
             sta TIM64T  ; (35*64) cpu cycles / 76 cycles/line = 29.4 scanlines
 
             ; Free-time for calculations here :-)
+            ; -----------------------------------
             jsr PieceOut
+
+            ; ----------------------------------------------------------------------
+            ; Player
+
+            tt_PlayerStart:
+
+            tt_Player:
+                    dec tt_timer
+                    bpl xxnoNewNote
+                    
+                    ldx #1                          ; 2 channels
+            xxadvanceLoop:
+                    jsr tt_FetchNote
+                    cmp #TT_INS_PAUSE
+                    bcc xxfinishedNewNote	
+                    bne xxnewNote
+              
+            xxpause:
+                    lda tt_cur_ins_c0,x
+                    jsr tt_CalcInsIndex
+                    lda tt_InsReleaseIndexes-1,y    ; -1 b/c instruments start at #1
+                    clc
+                    adc #1
+                    bcc xxstoreADIndex               ; unconditional
+
+            tt_FetchNote:
+
+            xxconstructPatPtr:
+                    ldy tt_cur_pat_index_c0,x       ; get current pattern (index into tt_SequenceTable)
+                    lda tt_SequenceTable,y
+                    bpl xxnoPatternGoto
+                    and #%01111111                  ; mask out goto bit to get pattern number
+                    sta tt_cur_pat_index_c0,x       ; store goto'ed pattern index
+                    bpl xxconstructPatPtr            ; unconditional
+            xxnoPatternGoto:
+                    tay
+                    lda tt_PatternPtrLo,y
+                    sta tt_ptr
+                    lda tt_PatternPtrHi,y
+                    sta tt_ptr+1
+                    clv
+                    lda tt_cur_note_index_c0,x
+                    bpl xxnotPrefetched
+                    and #%01111111
+                    sta tt_cur_note_index_c0,x
+                    bit tt_Bit6Set.w    ; PSF TEST HACK TODO - I dunno if .w is right
+            xxnotPrefetched:
+                    tay
+                    lda (tt_ptr),y
+                    bne xxnoEndOfPattern
+                    sta tt_cur_note_index_c0,x      ; a is 0
+                    inc tt_cur_pat_index_c0,x
+                    bne xxconstructPatPtr            ; unconditional
+            xxnoEndOfPattern:
+                    rts
+
+            xxnewNote:
+                    sta tt_cur_ins_c0,x             ; set new instrument
+                    cmp #TT_FREQ_MASK+1
+                    bcs xxstartInstrument
+
+                    tay
+                    lda tt_PercIndexes-TT_FIRST_PERC,y
+                    bne xxstoreADIndex               ; unconditional, since index values are >0
+
+            xxstartInstrument:
+                    bvs xxfinishedNewNote
+                    jsr tt_CalcInsIndex
+                    lda tt_InsADIndexes-1,y         ; -1 because instruments start at #1
+            xxstoreADIndex:
+                    sta tt_envelope_index_c0,x      
+
+            xxfinishedNewNote:
+                    inc tt_cur_note_index_c0,x
+            xxsequencerNextChannel:
+                    dex
+                    bpl xxadvanceLoop
+
+                    ldx #TT_SPEED-1
+                    stx tt_timer
+
+            xxnoNewNote:
+
+                    ldx #1                          ; 2 channels
+            xxupdateLoop:
+                    lda tt_cur_ins_c0,x
+                    cmp #TT_FREQ_MASK+1
+                    bcs xxinstrument                 ; Melodic instrument
+
+                    ldy tt_envelope_index_c0,x
+                    lda tt_PercCtrlVolTable-1,y     ; -1 because values are stored +1
+                    beq xxendOfPercussion            ; 0 means end of percussion data
+                    inc tt_envelope_index_c0,x      ; if end not reached: advance index
+            xxendOfPercussion:
+                    sta AUDV0,x
+                    lsr
+                    lsr
+                    lsr
+                    lsr
+                    sta AUDC0,x     
+                    lda tt_PercFreqTable-1,y        ; -1 because values are stored +1
+                    sta AUDF0,x
+                    bpl xxafterAudioUpdate
+                    jsr tt_FetchNote
+                    cmp #TT_FREQ_MASK+1
+                    bcc xxafterAudioUpdate
+                    sta tt_cur_ins_c0,x             ; set new instrument
+                    jsr tt_CalcInsIndex
+                    lda tt_InsSustainIndexes-1,y    ; -1 because instruments start at #1
+                    sta tt_envelope_index_c0,x      
+                    asl tt_cur_note_index_c0,x
+                    sec
+                    ror tt_cur_note_index_c0,x
+                    bmi xxafterAudioUpdate           ; unconditional
+                
+            tt_CalcInsIndex:
+                    lsr
+                    lsr
+                    lsr
+                    lsr
+                    lsr
+                    tay
+            tt_Bit6Set:     ; This opcode has bit #6 set, for use with bit instruction
+                    rts
+
+            xxinstrument:
+                    jsr tt_CalcInsIndex
+                    lda tt_InsCtrlTable-1,y ; -1 because instruments start with #1
+                    sta AUDC0,x
+                    lda tt_envelope_index_c0,x
+                    cmp tt_InsReleaseIndexes-1,y    ; -1 because instruments start with #1
+                    bne xxnoEndOfSustain
+                    lda tt_InsSustainIndexes-1,y    ; -1 because instruments start with #1
+            xxnoEndOfSustain:
+                    tay
+                    lda tt_InsFreqVolTable,y
+                    beq xxendOfEnvelope              ; 0 means end of release has been reached:
+                    iny                             ; advance index otherwise
+            xxendOfEnvelope:
+                    sty tt_envelope_index_c0,x
+                    sta AUDV0,x
+                    lsr
+                    lsr
+                    lsr
+                    lsr     
+                    clc
+                    adc tt_cur_ins_c0,x
+                    sec
+                    sbc #8
+                    sta AUDF0,x
+
+            xxafterAudioUpdate:
+                    dex
+                    bpl xxupdateLoop
+
+            ; End Player
+            ; ----------------------------------------------------------------------
 
             ; Poll the timer until the scheduled end of overscan.
 Overscan:   lda INTIM
@@ -749,6 +928,134 @@ PieceTable:
     .DB %0000
 
 ; ----------------------------------------------------------------------
+; TIATracker Track data
+
+tt_TrackDataStart:
+
+tt_InsCtrlTable:
+        .DB $06, $04, $04
+
+tt_InsADIndexes:
+        .DB $00, $04, $08
+
+tt_InsSustainIndexes:
+        .DB $00, $04, $08
+
+tt_InsReleaseIndexes:
+        .DB $01, $05, $09
+
+tt_InsFreqVolTable:
+        .DB $8d, $00, $8d, $00
+        .DB $8f, $00, $8f, $00
+        .DB $86, $00, $86, $00
+
+tt_PercIndexes:
+        .DB $01, $09
+
+tt_PercFreqTable:
+        .DB $01, $02, $03, $04, $05, $06, $87, $00
+        .DB $06, $1a, $1d, $07, $08, $08, $88, $00
+
+tt_PercCtrlVolTable:
+        .DB $ed, $ed, $ed, $ed, $ed, $ec, $eb, $00
+        .DB $8c, $cc, $cc, $8c, $8a, $88, $86, $00
+
+tt_pattern0:
+        .DB $11, $34, $08, $11, $12, $34, $11, $08
+        .DB $08, $08, $08, $08, $12, $34, $11, $12
+        .DB $11, $2f, $08, $11, $12, $08, $11, $2f
+        .DB $08, $08, $08, $08, $12, $08, $08, $08
+        .DB $00
+
+tt_pattern1:
+        .DB $11, $30, $08, $11, $12, $30, $11, $08
+        .DB $11, $34, $08, $11, $12, $30, $11, $12
+        .DB $11, $2f, $08, $11, $12, $08, $11, $2f
+        .DB $08, $08, $08, $08, $2d, $08, $2c, $08
+        .DB $00
+
+tt_pattern2:
+        .DB $11, $2b, $08, $11, $12, $2b, $11, $08
+        .DB $08, $08, $08, $08, $12, $2b, $08, $12
+        .DB $11, $2c, $08, $08, $12, $08, $11, $2c
+        .DB $08, $08, $08, $08, $12, $08, $08, $08
+        .DB $00
+
+tt_pattern3:
+        .DB $11, $2f, $08, $11, $12, $2f, $11, $08
+        .DB $08, $08, $08, $08, $12, $2f, $11, $12
+        .DB $11, $30, $08, $11, $12, $08, $11, $30
+        .DB $08, $08, $08, $08, $12, $08, $08, $08
+        .DB $00
+
+tt_pattern4:
+        .DB $53, $08, $10, $73, $5a, $08, $59, $08
+        .DB $56, $10, $08, $76, $59, $08, $5a, $08
+        .DB $5e, $10, $08, $7e, $5e, $08, $59, $08
+        .DB $53, $10, $08, $73, $56, $08, $59, $08
+        .DB $00
+
+tt_pattern5:
+        .DB $5a, $08, $10, $7a, $5a, $08, $59, $08
+        .DB $56, $08, $10, $76, $53, $08, $10, $73
+        .DB $59, $08, $10, $79, $5e, $08, $10, $7e
+        .DB $5e, $08, $10, $7e, $12, $08, $08, $08
+        .DB $00
+
+tt_pattern6:
+        .DB $08, $08, $08, $08, $56, $08, $52, $08
+        .DB $4e, $10, $08, $6e, $50, $08, $52, $08
+        .DB $53, $10, $08, $73, $10, $08, $59, $08
+        .DB $53, $10, $08, $73, $56, $08, $59, $10
+        .DB $00
+
+tt_pattern7:
+        .DB $5a, $08, $10, $7a, $5a, $08, $59, $08
+        .DB $56, $08, $10, $76, $53, $08, $10, $73
+        .DB $59, $08, $10, $79, $5e, $08, $10, $7e
+        .DB $5e, $08, $10, $7e, $10, $08, $08, $08
+        .DB $00
+
+tt_pattern8:
+        .DB $53, $08, $10, $08, $08, $08, $73, $10
+        .DB $59, $08, $10, $08, $08, $08, $79, $10
+        .DB $56, $08, $10, $08, $08, $08, $76, $10
+        .DB $5a, $08, $10, $08, $08, $08, $7a, $10
+        .DB $00
+
+tt_pattern9:
+        .DB $59, $08, $10, $08, $08, $08, $79, $10
+        .DB $5e, $08, $10, $08, $08, $08, $7e, $10
+        .DB $5f, $08, $10, $08, $08, $08, $7f, $10
+        .DB $5a, $08, $10, $08, $08, $08, $7a, $10
+        .DB $00
+
+tt_pattern10:
+        .DB $59, $08, $10, $79, $53, $08, $10, $73
+        .DB $4e, $08, $10, $6e, $4d, $08, $10, $6d
+        .DB $4f, $08, $10, $6f, $10, $08, $52, $10
+        .DB $53, $10, $08, $08, $08, $08, $08, $08
+        .DB $00
+
+tt_PatternPtrLo:
+        .DB <tt_pattern0, <tt_pattern1, <tt_pattern2, <tt_pattern3
+        .DB <tt_pattern4, <tt_pattern5, <tt_pattern6, <tt_pattern7
+        .DB <tt_pattern8, <tt_pattern9, <tt_pattern10
+tt_PatternPtrHi:
+        .DB >tt_pattern0, >tt_pattern1, >tt_pattern2, >tt_pattern3
+        .DB >tt_pattern4, >tt_pattern5, >tt_pattern6, >tt_pattern7
+        .DB >tt_pattern8, >tt_pattern9, >tt_pattern10        
+
+tt_SequenceTable:
+        ; ---------- Channel 0 ----------
+        .DB $00, $01, $02, $00, $00, $01, $02, $00
+        .DB $03, $03, $03, $03, $80
+        
+        ; ---------- Channel 1 ----------
+        .DB $04, $05, $06, $07, $04, $05, $06, $07
+        .DB $08, $09, $08, $0a, $8d
+
+; ----------------------------------------------------------------------
 ; RAM
 .RAMSECTION "foo" SLOT 1
                         ;  128 bytes RAM total
@@ -764,6 +1071,20 @@ PieceTable:
     Level DB            ; -  1 == 62    ; Game level...
     FrameNo DB          ; -  1 == 61    ; Frames since start & 0xFF...
     SlideAmt DB         ; -  1 == 60    ; Num lines cleared this frame...
+    ; ---
+    ; TIATracker stuff
+    tt_timer                ds 1    ; current music timer value
+    tt_cur_pat_index_c0     ds 1    ; current pattern index into tt_SequenceTable
+    tt_cur_pat_index_c1     ds 1
+    tt_cur_note_index_c0    ds 1    ; note index into current pattern
+    tt_cur_note_index_c1    ds 1
+    tt_envelope_index_c0    ds 1    ; index into ADSR envelope
+    tt_envelope_index_c1    ds 1
+    tt_cur_ins_c0           ds 1    ; current instrument
+    tt_cur_ins_c1           ds 1
+    ; Temporary variables. These will be overwritten during a call to the
+    ; player routine, but can be used between calls for other things.
+    tt_ptr                  ds 2
 .ENDS
 
 ; ----------------------------------------------------------------------
