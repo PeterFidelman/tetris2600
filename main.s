@@ -383,6 +383,7 @@ PieceNew:
             ldx #0
             stx PieceR
             stx PieceX
+            ;stx PieceS ; would make piece always zero
             inx
             stx PieceY
             ; the worst "random" ever - just take some bytes from the frame
@@ -547,10 +548,17 @@ LineFilled: ; Takes x (First byte of line to check).
 LineSlide:  ; Takes x (First byte of line to slide into (dest))
             ; and the zeropage variable SlideAmt
             txa
-            clc
+            sec
             sbc SlideAmt
-            clc
+            sec
             sbc SlideAmt
+            ; hack
+            cmp #40
+            bmi LSOk
+            lsr  ; to miss the top row
+            ; note this is a 1am hack and I do not understand
+            ; exactly why it worked!  D:
+    LSOk:
             tay
             lda GameBoard, y
             sta GameBoard, x
