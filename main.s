@@ -189,6 +189,7 @@ MoveLeft:   ; Move a single line of the piece to the left
             lsr PiecePF2.b, x
             bcc MLSkip
             inc PiecePF1, x     ; set low bit (bit shifted out of PF2 into PF1)
+            clc
     MLSkip: rts
 
 MoveRight:  ; Move a single line of the piece to the right
@@ -196,6 +197,7 @@ MoveRight:  ; Move a single line of the piece to the right
             lsr PiecePF1.b, x
             bcc MRSkip
             inc PiecePF2, x     ; set low bit (bit shifted out of PF1 into PF2)
+            clc
     MRSkip: rts
 
 PieceNew:
@@ -212,6 +214,7 @@ PieceNew:
             lsr
             lsr
             lsr
+            clc
             and #7
             cmp #7
             bne PNDone
@@ -228,6 +231,7 @@ PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
             adc PieceR
             asl     ; ...*8
             asl     ; ...*16
+            clc
             tay     ; y = (PieceS*16) + (PieceR*4)
             ldx #0
     PLNext:
@@ -263,6 +267,7 @@ PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
 PieceIn:    ; Mask the piece into the playfield;  ORA + STA
             lda PieceY
             asl 
+            clc
             tay     ; y = PieceY * 2
             ldx #0
     PINext:
@@ -282,6 +287,7 @@ PieceIn:    ; Mask the piece into the playfield;  ORA + STA
 PieceOut:   ; Mask the piece out of the playfield;  EOR #$FF + AND + STA
             lda PieceY
             asl 
+            clc
             tay     ; y = PieceY * 2
             ldx #0
     PONext:
@@ -304,6 +310,7 @@ PieceCollides:  ; Check if piece would collide;  AND;  piece must be "out".
             ; Result in zeroflag;  zero == no collision;  nonzero == collision
             lda PieceY
             asl 
+            clc
             tay     ; y = PieceY * 2
             ldx #0
     PCNext:
@@ -442,9 +449,11 @@ JoypadPoll: ; TODO
             bit SWCHA
             beq J1Right
             lsr
+            clc
             bit SWCHA
             beq J1Left
             lsr
+            clc
             bit SWCHA
             beq J1Down
             ;lsr
@@ -482,9 +491,9 @@ JoypadPoll: ; TODO
             sta LastJoy     ; newly pressed
             jmp J1Rtry
       J1Rodds:
-            lda #1
-            and FrameNo
-            beq J1Done
+            lda FrameNo
+            and #$7
+            bne J1Done
       J1Rtry:
             ; right action
             jsr PieceRight
@@ -502,9 +511,9 @@ JoypadPoll: ; TODO
             sta LastJoy     ; newly pressed
             jmp J1LTry
       J1Lodds:
-            lda #1
-            and FrameNo
-            beq J1Done
+            lda FrameNo
+            and #$7
+            bne J1Done
       J1LTry:
             ; left action
             jsr PieceLeft
