@@ -108,6 +108,10 @@ StartOfFrame:
             ; Free-time for calculations here :-)
             ; -----------------------------------
 
+            ; Skip all the gamelogic if it's game over.
+            lda GameIsOver
+            bne VertBlank
+
             ; Field the user input
             jsr JoypadPoll
 
@@ -193,6 +197,20 @@ NoPicture:  sta WSYNC
 
             ; Free-time for calculations here :-)
             ; -----------------------------------
+
+            ; Check the Game Reset switch
+            lda #1
+            bit SWCHB
+            bne NotReset
+            jmp Reset
+    NotReset:
+
+            ; Skip all the gamelogic if it's game over.
+            lda GameIsOver
+            beq NotOver
+            jmp Overscan
+    NotOver:
+
             jsr PieceOut
 
             ; ----------------------------------------------------------------------
@@ -445,6 +463,13 @@ PieceLoad:  ; From PieceR, S and X;  updates PiecePF1 and 2
     PLDone: rts
 
 PieceIn:    ; Mask the piece into the playfield;  ORA + STA
+            ; NOTE: if we're trying to mask a piece into a place where it
+            ; doesn't fit, that's game over.
+            jsr PieceCollides
+            beq PIFits
+            jmp GameOver
+    PIFits:
+            ;
             lda PieceY
             asl 
             clc
@@ -744,6 +769,17 @@ GravTick:
             ; And "lock piece" (meaning, move on to the next piece)
             jsr PieceLock
 GTDone:     rts
+
+GameOver:   ; communism wins
+            lda #$40
+            sta COLUBK
+            ; sssshhhhh
+            lda #0
+            sta AUDV0
+            sta AUDV1
+            lda #1
+            sta GameIsOver
+            rts
 
 ; ----------------------------------------------------------------------
 ; ROM data
@@ -1083,6 +1119,7 @@ tt_SequenceTable:
     FrameNo DB          ; -  1 == 61    ; Frames since start & 0xFF...
     SlideAmt DB         ; -  1 == 60    ; Num lines cleared this frame...
     SinceJoy DB
+    GameIsOver DB
     ; ---
     ; TIATracker stuff
     tt_timer                ds 1    ; current music timer value
