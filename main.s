@@ -60,14 +60,16 @@ ResetLoop:  dex
             lda #$00
             sta SWACNT
 
+            ; initial speed
+            lda #%00011111
+            sta SpeedMask
+
             ; colors
             lda #$0E
             sta COLUPF
             lda #$70
+            sta LevelBg
             sta COLUBK
-
-            lda #0
-            sta Level
 
             jsr PieceNew
             jsr PieceLoad
@@ -116,13 +118,14 @@ StartOfFrame:
             jsr JoypadPoll
 
             ; Decide whether it is time to tick gravity
-            lda #%00011111
-            ldx Level
-  SOFShift: beq SOFShifted
-            lsr
-            dex
-            jmp SOFShift
-  SOFShifted:
+;            lda #%00011111
+;            ldx Level
+;  SOFShift: beq SOFShifted
+;            lsr
+;            dex
+;            jmp SOFShift
+;  SOFShifted:
+            lda SpeedMask
             and FrameNo
             bne NoGravYet
             jsr GravTick    ; Tick gravity
@@ -611,6 +614,33 @@ ClearFilledLines:
             dex
    CFLLoop: cpx #0
             bne CFLTop
+            ; update lines counter
+            ; TODO - I think this might still be giving SlideAmt=2 for singles
+            lda SlideAmt
+            clc
+            adc LinesThisLevel
+            sta LinesThisLevel
+            ;cmp #10*2   ; Note the *2 hack
+            cmp #5*2   ; Make levels advance a lil faster for the demo: TODO REMOVE
+            ;cmp #2
+            bmi CFLSameLevel
+            ; move on to the next level
+            lda SpeedMask
+            lsr
+            ora #3          ; most challenging speedmask allowed
+            sta SpeedMask
+            ;lsr SpeedMask  ; this would be the "uncapped" level advance code
+
+            ; change the color
+            lda LevelBg
+            clc
+            adc #$50
+            sta LevelBg
+            sta COLUBK
+
+            lda #0
+            sta LinesThisLevel
+    CFLSameLevel:
             rts
 ;---
 ;  CFLTop:   jsr LineFilled
@@ -665,7 +695,10 @@ JoypadPoll: ; TODO
             beq J1Left
             lsr
             bit SWCHA
-            beq J1Down
+            ;beq J1Down
+            bne JPSkip
+            jmp J1Down
+    JPSkip:
             ;lsr
             ;bit SWCHA
             ;beq J1Up
@@ -1115,11 +1148,14 @@ tt_SequenceTable:
     PiecePF1 DS 4       ; -  4 == 68    ; PF1 bits...
     PiecePF2 DS 4       ; -  4 == 64    ; PF2 bits...
     LastJoy DB          ; -  1 == 63    ; Last joypad direction...
-    Level DB            ; -  1 == 62    ; Game level...
+    SpeedMask DB        ; -  1 == 62    ; Game speed...
+    LevelBg DB                          ; Background color for this level
     FrameNo DB          ; -  1 == 61    ; Frames since start & 0xFF...
     SlideAmt DB         ; -  1 == 60    ; Num lines cleared this frame...
     SinceJoy DB
     GameIsOver DB
+    ;Lines DS 2
+    LinesThisLevel DB
     ; ---
     ; TIATracker stuff
     tt_timer                ds 1    ; current music timer value
