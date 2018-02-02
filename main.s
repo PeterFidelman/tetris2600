@@ -636,11 +636,9 @@ JoypadPoll: ; TODO
             bit SWCHA
             beq J1Right
             lsr
-            clc
             bit SWCHA
             beq J1Left
             lsr
-            clc
             bit SWCHA
             beq J1Down
             ;lsr
@@ -652,7 +650,7 @@ JoypadPoll: ; TODO
     J1Fire:
             lda #1          ; fire
             cmp LastJoy
-            beq J1Done      ; already pressed
+            beq J1Fok       ; already pressed
             sta LastJoy     ; newly pressed
             ; fire button action
             lda PieceR
@@ -676,9 +674,11 @@ JoypadPoll: ; TODO
             cmp LastJoy
             beq J1Rodds
             sta LastJoy     ; newly pressed
+            lda #0
+            sta SinceJoy
             jmp J1Rtry
       J1Rodds:
-            lda FrameNo
+            lda SinceJoy
             and #$7
             bne J1Done
       J1Rtry:
@@ -696,9 +696,11 @@ JoypadPoll: ; TODO
             cmp LastJoy
             beq J1Lodds
             sta LastJoy     ; newly pressed
+            lda #0
+            sta SinceJoy
             jmp J1LTry
       J1Lodds:
-            lda FrameNo
+            lda SinceJoy
             and #$7
             bne J1Done
       J1LTry:
@@ -730,7 +732,8 @@ JoypadPoll: ; TODO
             ;sta LastJoy     ; newly pressed
             ;; up action
             ;jsr PieceLock
-    J1Done: rts
+    J1Done: inc SinceJoy
+            rts
 
 GravTick:
             ; Can it drop?
@@ -1079,6 +1082,7 @@ tt_SequenceTable:
     Level DB            ; -  1 == 62    ; Game level...
     FrameNo DB          ; -  1 == 61    ; Frames since start & 0xFF...
     SlideAmt DB         ; -  1 == 60    ; Num lines cleared this frame...
+    SinceJoy DB
     ; ---
     ; TIATracker stuff
     tt_timer                ds 1    ; current music timer value
