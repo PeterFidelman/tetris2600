@@ -118,13 +118,6 @@ StartOfFrame:
             jsr JoypadPoll
 
             ; Decide whether it is time to tick gravity
-;            lda #%00011111
-;            ldx Level
-;  SOFShift: beq SOFShifted
-;            lsr
-;            dex
-;            jmp SOFShift
-;  SOFShifted:
             lda SpeedMask
             and FrameNo
             bne NoGravYet
@@ -216,8 +209,8 @@ NoPicture:  sta WSYNC
 
             jsr PieceOut
 
-            ; ----------------------------------------------------------------------
-            ; Player
+            ; TIATracker Player (generated code, not something I wrote!)
+            ; ----------------------------------------------------------
 
             tt_PlayerStart:
 
@@ -642,49 +635,8 @@ ClearFilledLines:
             sta LinesThisLevel
     CFLSameLevel:
             rts
-;---
-;  CFLTop:   jsr LineFilled
-;            bne CFLNext
-;            inc SlideAmt
-;            jsr LineSlide
-;  CFLNext:
-;            dex
-;            dex
-;            cpx #0
-;            bne CFLTop
-;            rts
-;---
 
-;           ldx #40
-;           lda #0
-;           sta SlideAmt
-;           sta OutOfFiller ; TODO
-;    Appraise:
-;;            jsr LineFilled
-;;           bne DoneLine
-;;           ; Filled
-;;           inc SlideAmt
-;;           jsr LineSlide
-;;           jmp Appraise
-;            lda #0
-;            cmp SlideAmt
-;            beq SkipSlide
-;            jsr LineSlide
-;  SkipSlide:jsr LineFilled
-;            bne SkipInc
-;            inc SlideAmt
-;            jmp Appraise
-;  SkipInc:  ; jmp DoneLine
-;
-;    DoneLine:
-;            ; And move on to the next line
-;            dex
-;            dex
-;            cpx #0
-;            bne Appraise
-;            rts
-
-JoypadPoll: ; TODO
+JoypadPoll:
             lda #%10000000
             bit INPT4
             beq J1Fire
@@ -695,13 +647,9 @@ JoypadPoll: ; TODO
             beq J1Left
             lsr
             bit SWCHA
-            ;beq J1Down
             bne JPSkip
             jmp J1Down
     JPSkip:
-            ;lsr
-            ;bit SWCHA
-            ;beq J1Up
             lda #0          ; nothing pressed
             sta LastJoy
             jmp J1Done
@@ -773,9 +721,7 @@ JoypadPoll: ; TODO
             jmp J1Done
     J1Down:
             lda #4          ; down
-            ;cmp LastJoy
-            ;beq J1Done      ; already pressed
-            sta LastJoy     ; newly pressed
+            sta LastJoy
             ; down action
             inc PieceY
             jsr PieceCollides
@@ -784,6 +730,8 @@ JoypadPoll: ; TODO
       J1Dok:
             jmp J1Done
     J1Up:
+            ;This is a removed debug feature that will lock the piece wherever
+            ;it is.  This lets you have a "hovering" piece.
             ;lda #5          ; up
             ;cmp LastJoy
             ;beq J1Done      ; already pressed
@@ -1149,13 +1097,13 @@ tt_SequenceTable:
     PiecePF2 DS 4       ; -  4 == 64    ; PF2 bits...
     LastJoy DB          ; -  1 == 63    ; Last joypad direction...
     SpeedMask DB        ; -  1 == 62    ; Game speed...
-    LevelBg DB                          ; Background color for this level
-    FrameNo DB          ; -  1 == 61    ; Frames since start & 0xFF...
-    SlideAmt DB         ; -  1 == 60    ; Num lines cleared this frame...
-    SinceJoy DB
-    GameIsOver DB
+    LevelBg DB          ; -  1 == 61    ; Background color for this level
+    FrameNo DB          ; -  1 == 60    ; Frames since start & 0xFF...
+    SlideAmt DB         ; -  1 == 59    ; Num lines cleared this frame...
+    SinceJoy DB         ; -  1 == 58
+    GameIsOver DB       ; -  1 == 57
     ;Lines DS 2
-    LinesThisLevel DB
+    LinesThisLevel DB   ; -  1 == 56
     ; ---
     ; TIATracker stuff
     tt_timer                ds 1    ; current music timer value
@@ -1170,6 +1118,7 @@ tt_SequenceTable:
     ; Temporary variables. These will be overwritten during a call to the
     ; player routine, but can be used between calls for other things.
     tt_ptr                  ds 2
+    ;                   ; - 11 bytes for TIATracker == 45 bytes free RAM.
 .ENDS
 
 ; ----------------------------------------------------------------------
