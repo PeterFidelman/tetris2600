@@ -1,7 +1,0 @@
-mildly hacky, the last line is a little unhappy and if you watch in the
-debugger you can see the screen contents "settle" over the course of a few
-frames
-
-this is probably fine for now. I'm going to go with it and hopefully I will be
-able to understand those problems when the stuff I'm trying to display is a
-little more complicated (i.e. asymmetrical playfield...)
